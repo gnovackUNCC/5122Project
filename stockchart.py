@@ -18,27 +18,19 @@ if stocks:
     cur_stock = yf.Ticker(stocks)
     chart = cur_stock.history(period=period, interval=interval)
     chart = chart.reset_index()
-    #earnings = cur_stock.earnings
-    #earnings = earnings.reset_index()
-    earnings = pd.DataFrame.from_dict(si.get_earnings_history(stocks))
+    earnings = cur_stock.earnings
+    earnings = earnings.reset_index()
+    #earnings = pd.DataFrame.from_dict(si.get_earnings_history(stocks))
     shares = cur_stock.info["sharesOutstanding"]
     for index, row in earnings.iterrows():
-        date_string = str(row["startdatetime"])
-        parts = date_string.split("-")
-        month = int(parts[1])
-        year = int(parts[0])
-        quarter = int(month / 3.1)
-        if quarter == 2:
-            print(f"{month}, {year}")
-        if not np.isnan(row["epsactual"]):
-            chart.loc[(chart['Date'].dt.year == year) & (chart['Date'].dt.month.isin(quarters[quarter - 1])), "EPS"] = row["epsactual"]
-        elif not np.isnan(row["epsestimate"]):
-            chart.loc[(chart['Date'].dt.year == year) & (chart['Date'].dt.month.isin(quarters[quarter - 1])), "EPS"] = row["epsestimate"]
-    print(chart.head(10))
+        year = row['Year']
+        chart.loc[chart['Date'].dt.year == year, "Earnings"] = row["Earnings"]
+    chart["EPS"] = chart["Earnings"] / shares
     chart["P/E"] = chart["Close"] / (chart["EPS"])
     chart["Ticker"] = cur_stock.info["symbol"]
+    print(chart.head(10))
     chart_nona = chart.dropna(subset=['Close', 'EPS'])
-    rounded = round(chart_nona, 2)[["Date", "Ticker", "Close", "EPS", "P/E"]]
+    rounded = round(chart_nona, 2)[["Date", "Ticker", "Close", "Earnings", "EPS", "P/E"]]
 
     single_pe = alt.selection_single(on="mouseover")
     single_cost = alt.selection_single(on="mouseover")
