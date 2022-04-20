@@ -1,24 +1,43 @@
 import yfinance as yf
 import streamlit as st
 import altair as alt
+import pandas as pd
+import numpy as np
+import yahoo_fin.stock_info as si
 
 sidebar = st.sidebar
 
-stocks = st.sidebar.multiselect("Select Stocks", ["APPL", "MSFT", "GOOG"])
+stocks = st.sidebar.selectbox("Select Stocks", ["AAPL", "MSFT", "GOOG"])
 period = sidebar.radio("Range", ("5d", "1mo", "3mo", "6mo", "1y", "2y", "5y", "10y", "ytd", "max"))
 interval = sidebar.radio("Interval", ("1d", "5d", "1wk", "1mo", "3mo"))
 
+quarters = [[1, 2, 3], [4, 5, 6], [7, 8, 9], [10, 11, 12]]
+
 
 if stocks:
-    appl = yf.Ticker("AAPL")
-    chart = appl.history(period=period, interval=interval)
+    cur_stock = yf.Ticker(stocks)
+    chart = cur_stock.history(period=period, interval=interval)
     chart = chart.reset_index()
-    earnings = appl.earnings
-    shares = appl.info["sharesOutstanding"]
-    chart["P/E"] = chart["Close"] / (earnings.iloc[-1]["Earnings"] / shares)
-    chart["EPS"] = earnings.iloc[-1]["Earnings"] / shares
-    chart["Ticker"] = "APPL"
-    chart_nona = chart.dropna()
+    #earnings = cur_stock.earnings
+    #earnings = earnings.reset_index()
+    earnings = pd.DataFrame.from_dict(si.get_earnings_history(stocks))
+    shares = cur_stock.info["sharesOutstanding"]
+    for index, row in earnings.iterrows():
+        date_string = str(row["startdatetime"])
+        parts = date_string.split("-")
+        month = int(parts[1])
+        year = int(parts[0])
+        quarter = int(month / 3.1)
+        if quarter == 2:
+            print(f"{month}, {year}")
+        if not np.isnan(row["epsactual"]):
+            chart.loc[(chart['Date'].dt.year == year) & (chart['Date'].dt.month.isin(quarters[quarter - 1])), "EPS"] = row["epsactual"]
+        elif not np.isnan(row["epsestimate"]):
+            chart.loc[(chart['Date'].dt.year == year) & (chart['Date'].dt.month.isin(quarters[quarter - 1])), "EPS"] = row["epsestimate"]
+    print(chart.head(10))
+    chart["P/E"] = chart["Close"] / (chart["EPS"])
+    chart["Ticker"] = cur_stock.info["symbol"]
+    chart_nona = chart.dropna(subset=['Close', 'EPS'])
     rounded = round(chart_nona, 2)[["Date", "Ticker", "Close", "EPS", "P/E"]]
 
     single_pe = alt.selection_single(on="mouseover")
@@ -41,7 +60,7 @@ if stocks:
     )
 
     range_pe = range_base.mark_line(color="red").encode(
-        y=alt.Y("P/E:Q", axis=alt.Axis(title="P/E"))
+        y=alt.Y("P/E:Q", axis=alt.Axis(title="P/E"), scale=alt.Scale(zero=False))
     )
 
     range_cost = range_base.mark_line(color="blue").encode(
@@ -53,11 +72,11 @@ if stocks:
     )
 
     pe_line = chart_base.mark_line().encode(
-        y=alt.Y("P/E:Q", axis=alt.Axis(title="P/E"), scale=alt.Scale(zero=False))
+        y=alt.Y("P/E:Q", axis=alt.Axis(title="P/E"))
     )
 
     cost_line = chart_base.mark_line().encode(
-        y=alt.Y("Close:Q", axis=alt.Axis(title="Closing Cost ($USD)"), scale=alt.Scale(zero=False))
+        y=alt.Y("Close:Q", axis=alt.Axis(title="Closing Cost ($USD)"))
     )
 
     pe_point = pe_line.mark_point().encode(
@@ -74,9 +93,8 @@ if stocks:
     cost_chart = alt.layer(cost_line, cost_point)
 
     final_chart = alt.layer(pe_chart, cost_chart).resolve_scale(y='independent')
-    final_range = alt.layer(range_pe, range_cost).add_selection(interval)
+    final_range = range_pe.add_selection(interval)
 
-    y_shown = sidebar.selectbox("P/E or Close", ("P/E", "Close"), key="i")
 
     rounded
     st.write(alt.vconcat(final_chart, final_range))
