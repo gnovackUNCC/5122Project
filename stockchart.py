@@ -5,7 +5,6 @@ import pandas as pd
 import numpy as np
 import yahoo_fin.stock_info as si
 from os.path import exists
-from sklearn.linear_model import LinearRegression
 import numerize.numerize as num
 
 def pe_price_chart(stocks, period, interval):
